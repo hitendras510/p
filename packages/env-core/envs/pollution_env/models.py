@@ -2,10 +2,10 @@ from pydantic import BaseModel
 from typing import List
 
 # action sent by agent 
-class RouteAction(BaseModel):
-    start: str
-    end: str
-    mode: str # car, bus, train
+class RouteAction:
+    def __init__(self, path, exposure):
+        self.path = path
+        self.exposure = exposure
     
 # WHAT environment will return
 class RouteObservation(BaseModel):

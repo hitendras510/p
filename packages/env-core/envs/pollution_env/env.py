@@ -1,13 +1,7 @@
 from typing import Tuple
-import random
 
 from .models import RouteAction, RouteObservation, EnvState
 
-try:
-        from env_core.core.env_graph import get_route
-except ImportError:
-        def get_route(start, end):
-            return [start,"mid_point", end]
 
 class PollutionEnv:
     def __init__(self):
@@ -15,9 +9,9 @@ class PollutionEnv:
 
     def reset(self) -> EnvState:
         """
-        Initialize environment
+        Initialize environment state
         """
-        self.state = EnvState( #st a new episode
+        self.state = EnvState(
             current_location="START",
             total_exposure=0.0
         )
@@ -25,32 +19,29 @@ class PollutionEnv:
 
     def step(self, action: RouteAction) -> Tuple[RouteObservation, float, bool, dict]:
         """
-        Execute one step in environment
+        Execute one step in environment using routing output
         """
 
-        #  Simulate a route
-        path = [action.start, action.end]
+        # ---------------- USE ROUTING OUTPUT ----------------
+        path = action.path
+        exposure = action.exposure
 
-        #  Simulate AQI values (temporary)
-        aqi_values = [random.randint(50, 300) for _ in path]
-        avg_aqi = sum(aqi_values) / len(aqi_values)
+        # ---------------- DERIVED METRICS ----------------
+        # Temporary AQI estimation (replace later with real data)
+        avg_aqi = exposure / max(1, len(path))
 
-        #  Exposure calculation
-        duration = 30  # minutes (fixed for now)
-        exposure = avg_aqi * duration
-
-        #  Score (normalize)
-        max_exposure = 10000
+        # ---------------- SCORING ----------------
+        max_exposure = 10000  # normalization constant
         score = max(0, 100 - (exposure / max_exposure) * 100)
 
-        # Update state
-        self.state.current_location = action.end
+        # ---------------- STATE UPDATE ----------------
+        self.state.current_location = path[-1]
         self.state.total_exposure += exposure
 
-        #  Reward (CRITICAL DESIGN)
-        reward = -exposure  # lower exposure = better , (RL agents will try to maximize reward)
+        # ---------------- REWARD (RL DESIGN) ----------------
+        reward = -exposure  # lower exposure = better
 
-        #  Observation
+        # ---------------- OBSERVATION ----------------
         observation = RouteObservation(
             path=path,
             avg_aqi=avg_aqi,
@@ -58,7 +49,7 @@ class PollutionEnv:
             score=score
         )
 
-        done = True  # single-step for now
-        
-   
+        # Single-step episode for now
+        done = True
+
         return observation, reward, done, {}

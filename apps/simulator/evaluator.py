@@ -1,5 +1,8 @@
 import heapq
 
+
+# ===================== GRAPH =====================
+
 class Graph:
     def __init__(self):
         self.graph = {}
@@ -11,25 +14,29 @@ class Graph:
     def add_road(self, city1, city2, distance, pollution):
         self.add_city(city1)
         self.add_city(city2)
+
         # Undirected graph
         self.graph[city1].append((city2, distance, pollution))
         self.graph[city2].append((city1, distance, pollution))
 
-    def show_graph(self):
-        for city in self.graph:
-            print(f"{city} -> {self.graph[city]}")
+    def get_graph(self):
+        return self.graph
 
+
+# ===================== ROUTING =====================
 
 class Routing:
     def __init__(self, graph):
         self.graph = graph
 
-    def dijkstra(self, start, end, mode="distance"):
-        pq = [(0, start, [])]  # (cost, current_node, path)
+    def dijkstra(self, start, end, mode="distance", alpha=0.6):
+        pq = [(0, start, [], 0, 0, 0)]
+        # (cost, node, path, distance, pollution, exposure)
+
         visited = set()
 
         while pq:
-            cost, node, path = heapq.heappop(pq)
+            cost, node, path, dist_sum, poll_sum, exp_sum = heapq.heappop(pq)
 
             if node in visited:
                 continue
@@ -38,64 +45,138 @@ class Routing:
             visited.add(node)
 
             if node == end:
-                return cost, path
+                return {
+                    "path": path,
+                    "total_cost": cost,
+                    "total_distance": dist_sum,
+                    "total_pollution": poll_sum,
+                    "total_exposure": exp_sum,
+                    "mode": mode
+                }
 
             for neighbor, distance, pollution in self.graph[node]:
                 if neighbor not in visited:
+
+                    new_dist = dist_sum + distance
+                    new_poll = poll_sum + pollution
+
+                    exposure = distance * pollution
+                    new_exp = exp_sum + exposure
+
                     if mode == "distance":
                         new_cost = cost + distance
+
                     elif mode == "eco":
-                        new_cost = cost + pollution
+                        new_cost = cost + exposure
+
+                    elif mode == "hybrid":
+                        beta = 1 - alpha
+                        new_cost = cost + (alpha * distance + beta * exposure)
+
                     else:
-                        raise ValueError("Invalid mode selected")
+                        raise ValueError("Invalid mode")
 
-                    heapq.heappush(pq, (new_cost, neighbor, path))
+                    heapq.heappush(
+                        pq,
+                        (new_cost, neighbor, path, new_dist, new_poll, new_exp)
+                    )
 
-        return float("inf"), []
+        return None
 
 
-# ---------------- SAMPLE DATA ----------------
-g = Graph()
+def get_route(graph, start, end, mode="distance", alpha=0.6):
+    router = Routing(graph)
+    return router.dijkstra(start, end, mode, alpha)
 
-g.add_road("A", "B", 5, 10)
-g.add_road("A", "C", 8, 3)
-g.add_road("B", "D", 2, 2)
-g.add_road("C", "D", 4, 6)
-g.add_road("C", "E", 7, 1)
-g.add_road("D", "E", 1, 2)
-g.add_road("D", "F", 6, 8)
-g.add_road("E", "F", 3, 1)
 
-router = Routing(g.graph)
+# ===================== MODELS =====================
 
-# ---------------- CLI ----------------
-print("\nAvailable Cities:", list(g.graph.keys()))
+class RouteAction:
+    def __init__(self, path, exposure):
+        self.path = path
+        self.exposure = exposure
 
-start = input("Enter source city: ").strip()
-end = input("Enter destination city: ").strip()
 
-if start not in g.graph or end not in g.graph:
-    print("❌ Invalid city name")
-    exit()
+class RouteObservation:
+    def __init__(self, path, exposure, score):
+        self.path = path
+        self.exposure = exposure
+        self.score = score
 
-print("\nChoose Mode:")
-print("1 → Shortest Distance")
-print("2 → Eco-Friendly Route")
 
-choice = input("Enter choice: ").strip()
+# ===================== ENV =====================
 
-if choice == "1":
-    cost, path = router.dijkstra(start, end, mode="distance")
-    print("\n✅ Shortest Distance Route:")
-elif choice == "2":
-    cost, path = router.dijkstra(start, end, mode="eco")
-    print("\n🌱 Eco-Friendly Route:")
-else:
-    print("❌ Invalid choice")
-    exit()
+class PollutionEnv:
+    def __init__(self):
+        self.total_exposure = 0
 
-if path:
-    print("Path:", " → ".join(path))
-    print("Total Cost:", cost)
-else:
-    print("No route found")
+    def step(self, action: RouteAction):
+        # USE exposure from routing (IMPORTANT)
+        exposure = action.exposure
+
+        # scoring
+        max_exposure = 10000
+        score = max(0, 100 - (exposure / max_exposure) * 100)
+
+        reward = -exposure  # lower exposure = better
+
+        self.total_exposure += exposure
+
+        observation = RouteObservation(
+            path=action.path,
+            exposure=exposure,
+            score=score
+        )
+
+        done = True
+
+        return observation, reward, done, {}
+
+
+# ===================== SIMULATION =====================
+
+def run_simulation():
+    # Create graph
+    g = Graph()
+
+    g.add_road("A", "B", 5, 10)
+    g.add_road("A", "C", 8, 3)
+    g.add_road("B", "D", 2, 2)
+    g.add_road("C", "D", 4, 6)
+    g.add_road("C", "E", 7, 1)
+    g.add_road("D", "E", 1, 2)
+    g.add_road("D", "F", 6, 8)
+    g.add_road("E", "F", 3, 1)
+
+    graph = g.get_graph()
+
+    # Initialize env
+    env = PollutionEnv()
+
+    # Get route
+    route_data = get_route(graph, "A", "F", mode="hybrid", alpha=0.5)
+
+    # Convert to action
+    action = RouteAction(
+        path=route_data["path"],
+        exposure=route_data["total_exposure"]
+    )
+
+    # Run environment
+    observation, reward, done, _ = env.step(action)
+
+    # Output
+    print("\n🚀 FINAL OUTPUT")
+    print("Path:", " → ".join(observation.path))
+    print("Mode:", route_data["mode"])
+    print("Total Distance:", route_data["total_distance"])
+    print("Total Pollution:", route_data["total_pollution"])
+    print("Total Exposure:", observation.exposure)
+    print("Score:", observation.score)
+    print("Reward:", reward)
+
+
+# ===================== RUN =====================
+
+if __name__ == "__main__":
+    run_simulation()
