@@ -1,41 +1,63 @@
-def step(self, action: str):
-    neighbors = self.graph.get_neighbors(self.current_location)
+class PollutionEnv:
 
-    edge = None
-    for n, dist, pol in neighbors:
-        if n == action:
-            edge = (n, dist, pol)
-            break
+    def __init__(self, graph, start="A", destination="F"):
+        self.graph = graph
+        self.start = start
+        self.destination = destination
 
-    if edge is None:
-        raise ValueError(f"Invalid action: {action}")
+        self.current_location = start
+        self.total_exposure = 0
+        self.steps_taken = 0
+        self.max_steps = 50
 
-    next_node, distance, pollution = edge
+    def reset(self):
+        self.current_location = self.start
+        self.total_exposure = 0
+        self.steps_taken = 0
+        return self.current_location
 
-    # 📊 Exposure tracking (IMPORTANT)
-    exposure = distance * pollution
-    self.total_exposure += exposure
+    def get_possible_actions(self):
+        neighbors = self.graph.get_neighbors(self.current_location)
+        return [n for n, _, _ in neighbors]
 
-    self.current_location = next_node
-    self.steps_taken += 1
+    def step(self, action: str):
+        neighbors = self.graph.get_neighbors(self.current_location)
 
-    # 🎯 Balanced reward
-    reward = -(pollution * 0.7 + distance * 0.3)
+        edge = None
+        for n, dist, pol in neighbors:
+            if n == action:
+                edge = (n, dist, pol)
+                break
 
-    # 🌿 Controlled green bonus
-    reward += 0.5 * max(0, 10 - pollution)
+        if edge is None:
+            raise ValueError(f"Invalid action: {action}")
 
-    # 📍 Optional heuristic guidance
-    if hasattr(self.graph, "heuristic"):
-        reward -= 0.1 * self.graph.heuristic(next_node, self.destination)
+        next_node, distance, pollution = edge
 
-    done = next_node == self.destination
+        exposure = distance * pollution
+        self.total_exposure += exposure
 
-    if done:
-        reward += 100
+        self.current_location = next_node
+        self.steps_taken += 1
 
-    if self.steps_taken >= self.max_steps:
-        reward -= 50
-        done = True
+        reward = -(pollution * 0.7 + distance * 0.3)
+        reward += 0.5 * max(0, 10 - pollution)
 
-    return next_node, reward, done
+        if hasattr(self.graph, "heuristic"):
+            reward -= 0.1 * self.graph.heuristic(next_node, self.destination)
+
+        done = next_node == self.destination
+
+        if done:
+            reward += 100
+
+        if self.steps_taken >= self.max_steps:
+            reward -= 50
+            done = True
+
+        info = {
+            "total_exposure": self.total_exposure,
+            "steps": self.steps_taken
+        }
+
+        return next_node, reward, done, info
