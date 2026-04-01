@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from apps.backend.services.eco_route_model import select_best_route
 from apps.backend.services.eco_route_model import predict_score
 
+ 
 router = APIRouter()
 
 @router.post("/eco-route")
