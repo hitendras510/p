@@ -1,54 +1,74 @@
-import torch
-import torch.nn as nn
+import json
+import os
 
-# ---- Model Definition (same as training) ----
-class EcoModel(nn.Module):
-    def __init__(self):
-        super(EcoModel, self).__init__()
-        self.net = nn.Sequential(
-            nn.Linear(3, 16),
-            nn.ReLU(),
-            nn.Linear(16, 8),
-            nn.ReLU(),
-            nn.Linear(8, 1)
-        )
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
+MODEL_PATH = os.path.join(BASE_DIR, "models", "eco_model.json")
 
-    def forward(self, x):
-        return self.net(x)
+DEFAULT_WEIGHTS = {
+    "distance_weight": 0.15,
+    "pollution_weight": 0.45,
+    "exposure_weight": 0.4,
+}
 
-# ---- Load model ----
-model = EcoModel()
-model.load_state_dict(torch.load("models/eco_model.pth"))
-model.eval()
+_weights = DEFAULT_WEIGHTS.copy()
+
+
+def _load_weights() -> bool:
+    global _weights
+    if not os.path.exists(MODEL_PATH):
+        _weights = DEFAULT_WEIGHTS.copy()
+        return False
+
+    with open(MODEL_PATH, "r", encoding="utf-8") as fp:
+        data = json.load(fp)
+
+    _weights = {
+        "distance_weight": float(
+            data.get("distance_weight", DEFAULT_WEIGHTS["distance_weight"])
+        ),
+        "pollution_weight": float(
+            data.get("pollution_weight", DEFAULT_WEIGHTS["pollution_weight"])
+        ),
+        "exposure_weight": float(
+            data.get("exposure_weight", DEFAULT_WEIGHTS["exposure_weight"])
+        ),
+    }
+    return True
+
+
+_load_weights()
+
 
 def reload_model():
-    global model
-    try:
-        new_model = EcoModel()
-        new_model.load_state_dict(torch.load("models/eco_model.pth"))
-        new_model.eval()
-        model = new_model
-        print("[OK] Active model weights hot-reloaded successfully!")
-    except Exception as e:
-        print(f"[ERROR] Failed to reload model: {e}")
-
-# ---- Prediction function ----
-def predict_score(route):
-    # ⚠️ Adjust these keys based on your data
-    features = [
-        route.get("distance", 0),
-        route.get("traffic", 0),
-        route.get("fuel", 0)
-    ]
-
-    x = torch.tensor([features], dtype=torch.float32)
-
-    with torch.no_grad():
-        prediction = model(x)
-
-    return float(prediction.item())
+    if _load_weights():
+        print("[OK] Model weights hot-reloaded successfully!")
+    else:
+        print(f"[WARN] Model file not found at: {MODEL_PATH}. Using defaults.")
 
 
-# ---- Optional (if used somewhere else) ----
-def select_best_route(routes):
-    return min(routes, key=lambda x: x["score"])
+def predict_score_from_env(state, node, distance, pollution):
+    _ = node
+    return (
+        distance * _weights["distance_weight"]
+        + pollution * _weights["pollution_weight"]
+        + state.total_exposure * _weights["exposure_weight"]
+    )
+
+
+def choose_best_neighbor(state, neighbors, destination):
+    if not neighbors:
+        raise ValueError("No neighbors available for decision")
+
+    best_node = None
+    best_score = float("inf")
+
+    for node, distance, pollution in neighbors:
+        model_score = predict_score_from_env(state, node, distance, pollution)
+        goal_bonus = -10 if node == destination else 0
+        final_score = model_score + goal_bonus
+
+        if final_score < best_score:
+            best_score = final_score
+            best_node = node
+
+    return best_node if best_node is not None else min(neighbors, key=lambda x: x[2])[0]

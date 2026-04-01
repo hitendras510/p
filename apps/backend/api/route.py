@@ -1,21 +1,17 @@
-from fastapi import APIRouter
-from apps.backend.services.eco_route_model import predict_score
+from fastapi import APIRouter, HTTPException
+
+from apps.backend.schemas.route_schema import RouteRequest, RouteResponse
+from apps.backend.services.route_service import get_route_service
 
 router = APIRouter()
 
-@router.post("/eco-route")
-def eco_route(data: dict):
-    routes = data.get("routes", [])
 
-    for route in routes:
-        route["score"] = predict_score(route)
+@router.post("/eco-route", response_model=RouteResponse)
+def eco_route(req: RouteRequest):
 
-    if not routes:
-        return {"best_route": None, "all_routes": []}
+    result = get_route_service(req.start, req.end)
 
-    best = min(routes, key=lambda x: x["score"])
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
 
-    return {
-        "best_route": best,
-        "all_routes": routes
-    }
+    return result

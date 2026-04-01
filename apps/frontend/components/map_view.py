@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import streamlit as st
 
 def render_map_view(routes: list, best_route: dict = None):
@@ -53,3 +54,22 @@ def render_map_view(routes: list, best_route: dict = None):
 
     st.markdown('<div class="section-header">🗺️ Route Visualization</div>', unsafe_allow_html=True)
     st.graphviz_chart(dot_source, use_container_width=True)
+=======
+from __future__ import annotations
+
+import streamlit as st
+
+
+def render_map_view(path: list[str]) -> None:
+    st.subheader("🗺️ Route Timeline")
+
+    cols = st.columns(len(path)) if path else []
+    for index, node in enumerate(path):
+        cols[index].markdown(f"**{index + 1}. {node}**")
+        if index < len(path) - 1:
+            cols[index].caption("⬇")
+
+    st.markdown("### Step-by-step")
+    for index, node in enumerate(path, start=1):
+        st.write(f"{index}. Arrive at node `{node}`")
+>>>>>>> 8c3d578ab632eedee7d285f7a1cce0c2f1edc61d
