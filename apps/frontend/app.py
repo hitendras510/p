@@ -2,10 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apps.backend.api.route import router as eco_router
 
-# ✅ CREATE APP FIRST
 app = FastAPI()
 
-# ✅ ADD CORS (FOR FRONTEND)
+# CORS (IMPORTANT for frontend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -14,11 +13,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ REGISTER ROUTES
+# ROUTES
 app.include_router(eco_router)
-
-
-# OPTIONAL: root endpoint
-@app.get("/")
-def root():
-    return {"message": "EcoNav AI running 🚀"}
