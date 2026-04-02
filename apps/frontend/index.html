@@ -39,6 +39,7 @@
             <button class="nav-btn active" id="btn-home">🏠 Home & Overview</button>
             <button class="nav-btn" id="btn-route">🗺️ Eco Routing</button>
             <button class="nav-btn" id="btn-traffic">🚦 Traffic Engine</button>
+            <button class="nav-btn" id="btn-network">🌐 Route Network</button>
             <button class="nav-btn" id="btn-aqi">🌫️ Live AQI Matrix</button>
             <button class="nav-btn" id="btn-tasks">🤖 RL Tasks</button>
         </nav>
@@ -251,6 +252,64 @@
                 <div class="glass map-card">
                     <h3 style="margin-bottom:1rem;">🗺 Simulation Map</h3>
                     <div id="map-traffic" style="height: 100%; min-height: 400px; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.05);"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Route Network View -->
+        <section id="view-network" class="hidden">
+            <div class="page-header">
+                <p>Interactive city graph showing all RL environment routes, live AQI-weighted edges, and connection distances.</p>
+            </div>
+
+            <!-- Legend + Controls -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem;">
+                <div style="display:flex; gap:1.25rem; align-items:center; flex-wrap:wrap;">
+                    <span style="font-size:12px; text-transform:uppercase; color:var(--text-secondary); font-weight:600;">Legend</span>
+                    <span style="display:flex; align-items:center; gap:6px; font-size:13px;">
+                        <span style="width:14px; height:14px; border-radius:50%; background:#a855f7; display:inline-block;"></span> Shortest Route
+                    </span>
+                    <span style="display:flex; align-items:center; gap:6px; font-size:13px;">
+                        <span style="width:14px; height:14px; border-radius:50%; background:#10b981; display:inline-block;"></span> Eco Route
+                    </span>
+                    <span style="display:flex; align-items:center; gap:6px; font-size:13px;">
+                        <span style="width:36px; height:3px; background: linear-gradient(90deg,#10b981,#f59e0b,#ef4444); display:inline-block; border-radius:2px;"></span> Edge AQI
+                    </span>
+                </div>
+                <button id="btn-refresh-network" class="btn" style="padding:0.5rem 1.25rem; font-size:13px;">
+                    ↻ Refresh AQI
+                </button>
+            </div>
+
+            <!-- Canvas-based network -->
+            <div class="glass" style="padding:1.5rem; border-radius:20px; position:relative; overflow:hidden;">
+                <h3 style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1.25rem;">📡 Route Network</h3>
+                <div id="network-loading" class="loader"></div>
+                <canvas id="network-canvas" width="900" height="480"
+                    style="width:100%; border-radius:12px; cursor:crosshair; display:block;"></canvas>
+                <div id="network-tooltip"
+                    style="display:none; position:absolute; background:rgba(15,23,42,0.95); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:0.6rem 1rem; font-size:12px; pointer-events:none; z-index:10; min-width:160px;">
+                </div>
+            </div>
+
+            <!-- Edge Info Table -->
+            <div class="glass" style="padding:1.5rem; border-radius:20px; margin-top:1.5rem;">
+                <h3 style="margin-bottom:1rem;">📊 Edge Summary</h3>
+                <div id="network-edge-table" style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead>
+                            <tr style="color:var(--text-secondary); text-transform:uppercase; font-size:11px;">
+                                <th style="text-align:left; padding:0.5rem 0.75rem;">From</th>
+                                <th style="text-align:left; padding:0.5rem 0.75rem;">To</th>
+                                <th style="text-align:right; padding:0.5rem 0.75rem;">Distance</th>
+                                <th style="text-align:right; padding:0.5rem 0.75rem;">Avg AQI</th>
+                                <th style="text-align:right; padding:0.5rem 0.75rem;">Pollution Wt</th>
+                                <th style="text-align:left; padding:0.5rem 0.75rem;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="network-edge-tbody">
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </section>

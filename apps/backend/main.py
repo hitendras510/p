@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from apps.backend.api.aqi import router as aqi_router
 from apps.backend.api.credits import router as credits_router
+from apps.backend.api.network import router as network_router
 from apps.backend.api.route import router as eco_router
 from packages.env_core.core.api import router as openenv_router
 from apps.backend.core.config import settings
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(eco_router, prefix="/api/v1")
 app.include_router(aqi_router, prefix="/api/v1")
 app.include_router(credits_router, prefix="/api/v1")
+app.include_router(network_router, prefix="/api/v1")
 
 # OpenEnv standard endpoints at root level for spec compliance
 app.include_router(openenv_router)

@@ -2,11 +2,13 @@
 const btnHome = document.getElementById('btn-home');
 const btnRoute = document.getElementById('btn-route');
 const btnTraffic = document.getElementById('btn-traffic');
+const btnNetwork = document.getElementById('btn-network');
 const btnAqi = document.getElementById('btn-aqi');
 const btnTasks = document.getElementById('btn-tasks');
 const viewHome = document.getElementById('view-home');
 const viewRoute = document.getElementById('view-route');
 const viewTraffic = document.getElementById('view-traffic');
+const viewNetwork = document.getElementById('view-network');
 const viewAqi = document.getElementById('view-aqi');
 const viewTasks = document.getElementById('view-tasks');
 
@@ -85,11 +87,11 @@ document.getElementById('btn-reset-day').addEventListener('click', () => {
 
 // --- Tab Switching ---
 function hideAll() {
-    [viewHome, viewRoute, viewTraffic, viewAqi, viewTasks].forEach(v => {
+    [viewHome, viewRoute, viewTraffic, viewNetwork, viewAqi, viewTasks].forEach(v => {
         v.classList.add('hidden');
         v.classList.remove('animate-in');
     });
-    [btnHome, btnRoute, btnTraffic, btnAqi, btnTasks].forEach(b => b.classList.remove('active'));
+    [btnHome, btnRoute, btnTraffic, btnNetwork, btnAqi, btnTasks].forEach(b => b.classList.remove('active'));
 }
 
 btnHome.addEventListener('click', () => {
@@ -113,6 +115,14 @@ btnTraffic.addEventListener('click', () => {
     viewTraffic.classList.add('animate-in');
     btnTraffic.classList.add('active');
     setTimeout(() => mapTraffic.invalidateSize(), 100);
+});
+
+btnNetwork.addEventListener('click', () => {
+    hideAll();
+    viewNetwork.classList.remove('hidden');
+    viewNetwork.classList.add('animate-in');
+    btnNetwork.classList.add('active');
+    loadNetworkGraph();
 });
 
 btnAqi.addEventListener('click', () => {
@@ -532,3 +542,260 @@ async function loadTasksData() {
         loader.classList.add('hidden');
     }
 }
+
+// ============================================================
+// ROUTE NETWORK — canvas-based interactive graph
+// ============================================================
+
+let networkData = null;         // { nodes, edges }
+let networkAnimationId = null;  // rAF handle
+let networkDashOffset = 0;      // animated dash offset
+
+const NODE_RADIUS  = 28;
+const CANVAS_PAD_X = 60;        // extra padding so labels don't clip
+const CANVAS_PAD_Y = 40;
+
+// Scale raw node positions to the actual canvas pixel size
+function scaleNodes(nodes, canvas) {
+    const rawW = 760, rawH = 400;       // design-time canvas size
+    const scaleX = (canvas.width  - CANVAS_PAD_X * 2) / rawW;
+    const scaleY = (canvas.height - CANVAS_PAD_Y * 2) / rawH;
+    return nodes.map(n => ({
+        ...n,
+        px: Math.round(n.x * scaleX + CANVAS_PAD_X),
+        py: Math.round(n.y * scaleY + CANVAS_PAD_Y),
+    }));
+}
+
+function nodeById(scaled, id) {
+    return scaled.find(n => n.id === id);
+}
+
+// Draw a filled, glow-ringed city node
+function drawNode(ctx, n) {
+    // Glow halo
+    const grad = ctx.createRadialGradient(n.px, n.py, NODE_RADIUS * 0.6, n.px, n.py, NODE_RADIUS * 1.8);
+    grad.addColorStop(0, n.color + '55');
+    grad.addColorStop(1, 'transparent');
+    ctx.beginPath();
+    ctx.arc(n.px, n.py, NODE_RADIUS * 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Node ring
+    ctx.beginPath();
+    ctx.arc(n.px, n.py, NODE_RADIUS, 0, Math.PI * 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.strokeStyle = n.color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = n.color;
+    ctx.shadowBlur = 12;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // City label (name above, code below)
+    ctx.fillStyle = '#f1f5f9';
+    ctx.font = 'bold 12px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(n.name, n.px, n.py + 4);
+
+    // AQI badge
+    ctx.fillStyle = n.color;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.fillText(`AQI ${n.aqi}`, n.px, n.py + NODE_RADIUS + 14);
+}
+
+// Draw one directed edge (source → target) with animated dash
+function drawEdge(ctx, src, tgt, edge, dashOffset) {
+    const dx = tgt.px - src.px;
+    const dy = tgt.py - src.py;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / len, uy = dy / len;
+
+    // Offset start/end so lines don't overlap the node circles
+    const startX = src.px + ux * (NODE_RADIUS + 4);
+    const startY = src.py + uy * (NODE_RADIUS + 4);
+    const endX   = tgt.px - ux * (NODE_RADIUS + 10);
+    const endY   = tgt.py - uy * (NODE_RADIUS + 10);
+
+    // Build curved path (slight arc for bidirectional edges)
+    const mx = (startX + endX) / 2 + uy * 18;
+    const my = (startY + endY) / 2 - ux * 18;
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(mx, my, endX, endY);
+    ctx.strokeStyle = edge.color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.lineDashOffset = -dashOffset;
+    ctx.shadowColor = edge.color;
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    // Arrowhead at end
+    const angle = Math.atan2(endY - my, endX - mx);
+    const aLen = 9;
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(endX - aLen * Math.cos(angle - 0.4), endY - aLen * Math.sin(angle - 0.4));
+    ctx.lineTo(endX - aLen * Math.cos(angle + 0.4), endY - aLen * Math.sin(angle + 0.4));
+    ctx.closePath();
+    ctx.fillStyle = edge.color;
+    ctx.fill();
+
+    // Mid-label: distance + avg_aqi
+    const lx = (startX + endX) / 2 + uy * 20;
+    const ly = (startY + endY) / 2 - ux * 20;
+    ctx.fillStyle = 'rgba(15,23,42,0.8)';
+    ctx.beginPath();
+    ctx.roundRect(lx - 28, ly - 11, 56, 17, 4);
+    ctx.fill();
+    ctx.fillStyle = edge.color;
+    ctx.font = 'bold 9.5px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${edge.distance}km · AQI${edge.avg_aqi}`, lx, ly + 1);
+}
+
+function drawNetwork(canvas, nodes, edges, dashOffset) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const scaled = scaleNodes(nodes, canvas);
+
+    // Edges first
+    edges.forEach(e => {
+        const src = nodeById(scaled, e.source);
+        const tgt = nodeById(scaled, e.target);
+        if (src && tgt) drawEdge(ctx, src, tgt, e, dashOffset);
+    });
+
+    // Nodes on top
+    scaled.forEach(n => drawNode(ctx, n));
+}
+
+function startNetworkAnimation(canvas) {
+    if (networkAnimationId) cancelAnimationFrame(networkAnimationId);
+    function frame() {
+        if (!networkData) return;
+        networkDashOffset = (networkDashOffset + 0.4) % 28;
+        drawNetwork(canvas, networkData.nodes, networkData.edges, networkDashOffset);
+        networkAnimationId = requestAnimationFrame(frame);
+    }
+    networkAnimationId = requestAnimationFrame(frame);
+}
+
+function populateEdgeTable(edges, nodes) {
+    const tbody = document.getElementById('network-edge-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const nodeMap = Object.fromEntries(nodes.map(n => [n.id, n.name]));
+    edges.forEach(e => {
+        const aqiLabel = e.avg_aqi <= 50 ? 'Good' :
+                         e.avg_aqi <= 100 ? 'Moderate' :
+                         e.avg_aqi <= 150 ? 'Unhealthy (Sensitive)' :
+                         e.avg_aqi <= 200 ? 'Unhealthy' :
+                         e.avg_aqi <= 300 ? 'Very Unhealthy' : 'Hazardous';
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+        tr.innerHTML = `
+            <td style="padding:0.6rem 0.75rem; color:#e2e8f0;">${nodeMap[e.source] || e.source}</td>
+            <td style="padding:0.6rem 0.75rem; color:#e2e8f0;">${nodeMap[e.target] || e.target}</td>
+            <td style="padding:0.6rem 0.75rem; text-align:right; color:#94a3b8;">${e.distance} km</td>
+            <td style="padding:0.6rem 0.75rem; text-align:right; font-weight:bold; color:${e.color};">${e.avg_aqi}</td>
+            <td style="padding:0.6rem 0.75rem; text-align:right; color:#94a3b8;">${e.pollution.toFixed(4)}</td>
+            <td style="padding:0.6rem 0.75rem; color:${e.color}; font-size:12px;">${aqiLabel}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+// Hover tooltip
+function setupNetworkHover(canvas, nodes) {
+    const tooltip = document.getElementById('network-tooltip');
+    if (!tooltip) return;
+    const scaled = scaleNodes(nodes, canvas);
+    canvas.addEventListener('mousemove', (evt) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width  / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mx = (evt.clientX - rect.left) * scaleX;
+        const my = (evt.clientY - rect.top)  * scaleY;
+
+        const hit = scaled.find(n => {
+            const dx = mx - n.px, dy = my - n.py;
+            return Math.sqrt(dx*dx + dy*dy) <= NODE_RADIUS + 6;
+        });
+
+        if (hit) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = (evt.clientX - rect.left + 14) + 'px';
+            tooltip.style.top  = (evt.clientY - rect.top  + 14) + 'px';
+            tooltip.innerHTML = `
+                <div style="font-weight:700; color:${hit.color}; margin-bottom:4px;">📍 ${hit.name}</div>
+                <div style="color:#94a3b8;">AQI: <b style="color:${hit.color}">${hit.aqi}</b> — ${hit.category}</div>
+                <div style="color:#94a3b8; margin-top:2px;">Pollution weight: ${hit.pollution_weight}</div>
+            `;
+        } else {
+            tooltip.style.display = 'none';
+        }
+    });
+    canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+}
+
+window.networkLoaded = false;
+
+async function loadNetworkGraph(force = false) {
+    if (window.networkLoaded && !force) return;
+    const loader = document.getElementById('network-loading');
+    const canvas = document.getElementById('network-canvas');
+    if (!canvas) return;
+
+    if (loader) loader.classList.remove('hidden');
+    if (networkAnimationId) { cancelAnimationFrame(networkAnimationId); networkAnimationId = null; }
+
+    try {
+        const res  = await fetch('/api/v1/route-network');
+        if (!res.ok) throw new Error('Network API error');
+        networkData = await res.json();
+
+        // Resize canvas to actual display width maintaining aspect ratio
+        const displayW = canvas.clientWidth || 900;
+        canvas.width  = displayW > 0 ? displayW : 900;
+        canvas.height = Math.round(canvas.width * (480 / 900));
+
+        populateEdgeTable(networkData.edges, networkData.nodes);
+        setupNetworkHover(canvas, networkData.nodes);
+        startNetworkAnimation(canvas);
+        window.networkLoaded = true;
+    } catch (err) {
+        console.error('Route network:', err);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ef4444';
+        ctx.font = '14px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Failed to load route network data.', canvas.width / 2, canvas.height / 2);
+    } finally {
+        if (loader) loader.classList.add('hidden');
+    }
+}
+
+// Refresh button
+document.getElementById('btn-refresh-network')?.addEventListener('click', () => {
+    window.networkLoaded = false;
+    loadNetworkGraph(true);
+});
+
+// Pause animation when tab is hidden, resume when visible
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && networkAnimationId) {
+        cancelAnimationFrame(networkAnimationId);
+        networkAnimationId = null;
+    } else if (!document.hidden && networkData && !viewNetwork.classList.contains('hidden')) {
+        const c = document.getElementById('network-canvas');
+        if (c) startNetworkAnimation(c);
+    }
+});
