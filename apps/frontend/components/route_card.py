@@ -1,103 +1,95 @@
-<<<<<<< HEAD
 import streamlit as st
 
-def render_route_card(route_data: dict, is_best_route: bool = False):
-    """
-    Renders a premium glassmorphic route card using custom HTML/CSS.
-    """
-    path = route_data.get("path", [])
-    distance = route_data.get("distance", 0)
-    traffic = route_data.get("traffic", 0)
-    score = route_data.get("score", route_data.get("eco_score", "N/A"))
-    fuel = route_data.get("fuel", "N/A")
-    
-    # Build path string
-    path_str = " → ".join(path) if path else "Unknown"
-    
-    # Traffic level badge
-    if traffic <= 3:
-        traffic_label = "Low"
-        traffic_class = "green"
-        traffic_icon = "🟢"
-    elif traffic <= 6:
-        traffic_label = "Medium"
-        traffic_class = "amber"
-        traffic_icon = "🟡"
-    else:
-        traffic_label = "High"
-        traffic_class = "red"
-        traffic_icon = "🔴"
-    
-    # Score formatting
-    if isinstance(score, (int, float)):
-        score_display = f"{score:.2f}"
-    else:
-        score_display = str(score)
 
-    if is_best_route:
-        card_html = f"""
-        <div class="best-route-card">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
-                <span style="font-size: 1.4rem;">🏆</span>
-                <span style="font-weight: 700; color: #34d399; font-size: 1rem;">EcoNav Recommended Route</span>
-            </div>
-            <div style="margin-bottom: 14px;">
-                <span class="stat-pill green">📏 {distance} km</span>
-                <span class="stat-pill {traffic_class}">{traffic_icon} Traffic: {traffic_label}</span>
-                <span class="stat-pill blue">⚡ Score: {score_display}</span>
-            </div>
-            <div style="color: #94a3b8; font-size: 0.88rem;">
-                <strong style="color: #f1f5f9;">Path:</strong> {path_str}
-            </div>
-        </div>
-        """
-    else:
-        card_html = f"""
-        <div class="alt-route-card">
-            <div style="margin-bottom: 12px;">
-                <span class="stat-pill">📏 {distance} km</span>
-                <span class="stat-pill {traffic_class}">{traffic_icon} Traffic: {traffic_label}</span>
-                <span class="stat-pill">⚡ Score: {score_display}</span>
-            </div>
-            <div style="color: #64748b; font-size: 0.85rem;">
-                <strong style="color: #94a3b8;">Path:</strong> {path_str}
-            </div>
-        </div>
-        """
-    
-    st.markdown(card_html, unsafe_allow_html=True)
-=======
-from __future__ import annotations
+# City node mapping — matches the graph defined in route_service.py
+CITY_NODES = {
+    "A": "Delhi",
+    "B": "Jaipur",
+    "C": "Agra",
+    "D": "Varanasi",
+    "E": "Lucknow",
+    "F": "Kolkata",
+}
 
-import streamlit as st
+NODE_COORDS = {
+    "A": [28.6139, 77.2090],
+    "B": [26.9124, 75.7873],
+    "C": [27.1767, 78.0081],
+    "D": [25.3176, 82.9739],
+    "E": [26.8467, 80.9462],
+    "F": [22.5726, 88.3639],
+}
 
-from apps.frontend.utils.formatters import parse_improvement_percent, route_to_string
+
+def node_label(node: str) -> str:
+    """Convert node ID to 'City (ID)' format."""
+    city = CITY_NODES.get(node, node)
+    return f"{city} ({node})" if city != node else node
+
+
+def route_to_string(path: list) -> str:
+    """Convert a path list like ['A','B','F'] to 'Delhi → Jaipur → Kolkata'."""
+    return " → ".join(CITY_NODES.get(n, n) for n in path)
 
 
 def render_route_card(result: dict) -> None:
-    improvement_pct = parse_improvement_percent(result.get("improvement", "N/A"))
+    """
+    Renders a premium card for the eco-route result from the backend.
+    Expects keys: route, total_distance, total_pollution, shortest_route,
+                  shortest_exposure, improvement
+    """
+    eco_path = result.get("route", [])
+    shortest_path = result.get("shortest_route", [])
+    eco_exposure = float(result.get("total_pollution", 0))
+    baseline_exposure = float(result.get("shortest_exposure", 0))
+    distance = float(result.get("total_distance", 0))
+    improvement = result.get("improvement", "N/A")
+    exposure_saved = baseline_exposure - eco_exposure
 
-    st.subheader("🌿 Recommended Eco Route")
-    st.success(route_to_string(result["route"]))
+    # Parse improvement percentage
+    imp_pct = None
+    if improvement and improvement != "N/A":
+        try:
+            imp_pct = float(improvement.split("%")[0].strip())
+        except ValueError:
+            imp_pct = None
 
-    baseline_exposure = float(result.get("shortest_exposure", 0.0))
-    eco_exposure = float(result.get("total_pollution", 0.0))
-    exposure_delta = baseline_exposure - eco_exposure
+    # --- Best Route Card ---
+    card_html = f"""
+    <div class="best-route-card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <span style="font-size: 1.4rem;">🏆</span>
+            <span style="font-weight: 700; color: #34d399; font-size: 1rem;">EcoNav Recommended Route</span>
+        </div>
+        <div style="margin-bottom: 14px;">
+            <span class="stat-pill green">📏 {distance:.1f} km</span>
+            <span class="stat-pill blue">🌫️ Exposure: {eco_exposure:.1f}</span>
+            <span class="stat-pill green">💨 Saved: {exposure_saved:.1f}</span>
+        </div>
+        <div style="color: #94a3b8; font-size: 0.88rem; margin-bottom: 8px;">
+            <strong style="color: #f1f5f9;">Eco Path:</strong> {route_to_string(eco_path)}
+        </div>
+        <div style="color: #64748b; font-size: 0.82rem;">
+            <strong style="color: #94a3b8;">Shortest Path:</strong> {route_to_string(shortest_path)}
+        </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Distance", f"{float(result['total_distance']):.1f} km")
-    col2.metric("Eco Exposure", f"{eco_exposure:.1f}")
-    col3.metric("Baseline Exposure", f"{baseline_exposure:.1f}")
-    col4.metric("Saved", f"{exposure_delta:.1f}")
-
-    if improvement_pct is not None:
-        progress_value = max(min(improvement_pct / 100, 1.0), 0.0)
-        st.progress(progress_value, text=f"{improvement_pct:.2f}% cleaner")
+    # Progress bar for improvement
+    if imp_pct is not None and imp_pct > 0:
+        progress = max(min(imp_pct / 100, 1.0), 0.0)
+        st.progress(progress, text=f"🌿 {imp_pct:.1f}% cleaner than shortest route")
+    elif imp_pct == 0:
+        st.info("ℹ️ Eco route matches the shortest route for this pair.")
     else:
-        st.info("Improvement data not available for this route.")
+        st.info("ℹ️ Improvement data not available.")
 
-    with st.expander("🔍 Compare with shortest route"):
-        st.write("**Eco route:**", route_to_string(result["route"]))
-        st.write("**Shortest path:**", route_to_string(result["shortest_route"]))
-        st.write("**Improvement:**", result["improvement"])
->>>>>>> 8c3d578ab632eedee7d285f7a1cce0c2f1edc61d
+    # Comparison expander
+    with st.expander("🔍 Detailed Route Comparison"):
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Eco Distance", f"{distance:.1f} km")
+        col2.metric("Eco Exposure", f"{eco_exposure:.1f}")
+        col3.metric("Baseline Exposure", f"{baseline_exposure:.1f}")
+        col4.metric("Exposure Saved", f"{exposure_saved:.1f}")
+        st.markdown(f"**Improvement:** {improvement}")

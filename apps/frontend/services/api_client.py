@@ -1,32 +1,33 @@
-<<<<<<< HEAD
 import requests
 import streamlit as st
 
-BACKEND_URL = "http://127.0.0.1:8001"
+BACKEND_URL = "http://127.0.0.1:8000"
 
 
-def fetch_eco_routes(routes: list):
+def fetch_eco_route(start: str, end: str):
     """
-    Sends a list of candidate routes to the backend for AI scoring.
-    Returns the best route and all scored routes.
+    Calls the backend eco-route endpoint with start/end node IDs.
+    Returns the full response with eco path, shortest path, and metrics.
     """
     try:
+        payload = {"start": start.strip().upper(), "end": end.strip().upper()}
         response = requests.post(
             f"{BACKEND_URL}/api/v1/eco-route",
-            json={"routes": routes},
+            json=payload,
             timeout=10,
         )
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"Backend returned status {response.status_code}")
-            return {"best_route": None, "all_routes": routes}
+            detail = response.json().get("detail", response.text)
+            st.error(f"Backend error ({response.status_code}): {detail}")
+            return None
     except requests.exceptions.ConnectionError:
-        st.error("⚠️ Cannot connect to backend. Make sure FastAPI is running on port 8001.")
-        return {"best_route": None, "all_routes": routes}
+        st.error("⚠️ Cannot connect to backend. Make sure FastAPI is running.")
+        return None
     except Exception as e:
         st.error(f"Error: {e}")
-        return {"best_route": None, "all_routes": routes}
+        return None
 
 
 def trigger_training():
@@ -47,27 +48,9 @@ def trigger_training():
 
 
 def check_backend_health():
-    """Quick health check against the backend root endpoint."""
+    """Quick health check against the backend health endpoint."""
     try:
-        response = requests.get(f"{BACKEND_URL}/", timeout=3)
+        response = requests.get(f"{BACKEND_URL}/health", timeout=3)
         return response.status_code == 200
     except Exception:
         return False
-=======
-from __future__ import annotations
-
-import os
-from typing import Any
-
-import requests
-
-DEFAULT_BASE_URL = os.getenv("ECONAV_API_URL", "http://localhost:8000")
-
-
-def fetch_eco_route(start: str, end: str, base_url: str | None = None) -> dict[str, Any]:
-    url = (base_url or DEFAULT_BASE_URL).rstrip("/")
-    payload = {"start": start.strip().upper(), "end": end.strip().upper()}
-    response = requests.post(f"{url}/api/v1/eco-route", json=payload, timeout=10)
-    response.raise_for_status()
-    return response.json()
->>>>>>> 8c3d578ab632eedee7d285f7a1cce0c2f1edc61d
